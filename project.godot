@@ -1,12 +1,13 @@
-; Cricket Championship 3D - playable prototype
+; Cricket Championship 3D
+
 config_version=5
 
 [application]
 
 config/name="Cricket Championship 3D"
-run/main_scene="res://scenes/Main.tscn"
+run/main_scene="res://scenes/Main3D.tscn"
 config/features=PackedStringArray("4.3", "GL Compatibility")
-config/description="A mobile-friendly cricket prototype with batting, bowling, commentary and cinematic events."
+config/description="3D cricket game with player and broadcast cameras."
 
 [display]
 
@@ -15,6 +16,7 @@ window/size/viewport_height=720
 window/size/window_width_override=1280
 window/size/window_height_override=720
 window/stretch/mode="canvas_items"
+window/handheld/orientation=1
 
 [rendering]
 
