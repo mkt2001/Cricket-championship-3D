@@ -1,0 +1,28 @@
+name: Build Cricket Championship 3D
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Validate Godot Project
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Check Required Files
+        run: |
+          test -f project.godot
+          test -f scenes/Main.tscn
+          test -f scripts/main.gd
+          echo "Required project files found."
+
+      - name: Check Project Configuration
+        run: |
+          grep -F 'run/main_scene="res://scenes/Main.tscn"' project.godot
+          echo "Project configuration check passed."
