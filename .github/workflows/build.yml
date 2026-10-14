@@ -27,7 +27,7 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0 cmdline-tools;latest cmake;3.10.2.4988404 ndk;23.2.8568313'
           accept-android-sdk-licenses: true
 
       - name: Install Godot 4.3
@@ -47,9 +47,6 @@ jobs:
           grep -F 'run/main_scene="res://scenes/Main.tscn"' project.godot
           echo "Project files verified."
 
-      - name: Import Godot Project
-        run: godot --headless --editor --path . --quit
-
       - name: Install Godot Android Export Templates
         shell: bash
         run: |
@@ -68,7 +65,7 @@ jobs:
           TEMPLATE_SOURCE="$(find /tmp/godot_templates -type d -name templates -print -quit)"
 
           if [ -z "$TEMPLATE_SOURCE" ]; then
-            echo "ERROR: Export templates directory not found."
+            echo "ERROR: Godot export templates not found."
             find /tmp/godot_templates -maxdepth 3 -type f
             exit 1
           fi
@@ -76,7 +73,33 @@ jobs:
           cp -r "$TEMPLATE_SOURCE"/. "$TEMPLATE_DIR"/
           echo "4.3.stable" > "$TEMPLATE_DIR/version.txt"
 
-          ls -la "$TEMPLATE_DIR"
+          echo "Export templates installed."
+
+      - name: Configure Godot Android Settings
+        shell: bash
+        run: |
+          set -e
+
+          GODOT_CONFIG="$HOME/.config/godot"
+          mkdir -p "$GODOT_CONFIG"
+
+          SETTINGS_FILE="$GODOT_CONFIG/editor_settings-4.tres"
+
+          cat > "$SETTINGS_FILE" <<EOF
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          EOF
+
+          echo "Godot Android settings:"
+          cat "$SETTINGS_FILE"
+
+          test -x "$JAVA_HOME/bin/java"
+          test -f "$ANDROID_HOME/platform-tools/adb"
+          test -f "$ANDROID_HOME/build-tools/34.0.0/apksigner"
+          test -d "$ANDROID_HOME/ndk/23.2.8568313"
 
       - name: Create Android Debug Keystore
         shell: bash
@@ -86,7 +109,6 @@ jobs:
           mkdir -p "$HOME/.android"
 
           keytool -genkeypair \
-            -v \
             -keystore "$HOME/.android/debug.keystore" \
             -storepass android \
             -alias androiddebugkey \
@@ -99,17 +121,11 @@ jobs:
 
           echo "Debug keystore created."
 
-      - name: Configure Android Export
+      - name: Import Godot Project
         shell: bash
         run: |
           set -e
-
-          echo "Checking Android preset..."
-          grep -F 'name="Android"' export_presets.cfg
-          grep -F 'platform="Android"' export_presets.cfg
-
-          echo "Checking project export settings..."
-          cat export_presets.cfg
+          godot --headless --editor --path . --quit
 
       - name: Export Android APK
         shell: bash
@@ -118,9 +134,8 @@ jobs:
           GODOT_ANDROID_KEYSTORE_DEBUG_USER: androiddebugkey
           GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD: android
         run: |
-          set -e
+          set -o pipefail
 
-          mkdir -p "$HOME/.android"
           cp "$HOME/.android/debug.keystore" "$RUNNER_TEMP/debug.keystore"
 
           godot --headless --verbose \
@@ -129,8 +144,7 @@ jobs:
             CricketChampionship3D.apk 2>&1 | tee export.log
 
           test -s CricketChampionship3D.apk
-          echo "APK exported successfully."
-          ls -lh CricketChampionship3D.apk
+          echo "APK export successful."
 
       - name: Upload APK Artifact
         if: success()
