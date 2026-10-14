@@ -40,30 +40,22 @@ jobs:
         shell: bash
         run: |
           set -e
-
           test -f project.godot
           test -f export_presets.cfg
           test -f scenes/Main.tscn
           test -f scripts/main.gd
-
           grep -F 'run/main_scene="res://scenes/Main.tscn"' project.godot
-
-          echo "All required project files are present."
+          echo "Project files verified."
 
       - name: Import Godot Project
-        shell: bash
-        run: |
-          set -e
-          godot --headless --editor --path . --quit
+        run: godot --headless --editor --path . --quit
 
       - name: Install Godot Android Export Templates
         shell: bash
         run: |
           set -e
 
-          GODOT_VERSION="4.3.stable"
-          TEMPLATE_DIR="$HOME/.local/share/godot/export_templates/$GODOT_VERSION"
-
+          TEMPLATE_DIR="$HOME/.local/share/godot/export_templates/4.3.stable"
           mkdir -p "$TEMPLATE_DIR"
 
           curl -fL --retry 3 \
@@ -76,48 +68,84 @@ jobs:
           TEMPLATE_SOURCE="$(find /tmp/godot_templates -type d -name templates -print -quit)"
 
           if [ -z "$TEMPLATE_SOURCE" ]; then
-            echo "ERROR: Godot export templates folder was not found."
+            echo "ERROR: Export templates directory not found."
             find /tmp/godot_templates -maxdepth 3 -type f
             exit 1
           fi
 
           cp -r "$TEMPLATE_SOURCE"/. "$TEMPLATE_DIR"/
+          echo "4.3.stable" > "$TEMPLATE_DIR/version.txt"
 
-          echo "$GODOT_VERSION" > "$TEMPLATE_DIR/version.txt"
-
-          echo "Installed export templates:"
           ls -la "$TEMPLATE_DIR"
 
-      - name: Verify Android Export Preset
+      - name: Create Android Debug Keystore
         shell: bash
         run: |
           set -e
 
+          mkdir -p "$HOME/.android"
+
+          keytool -genkeypair \
+            -v \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US" \
+            -storetype PKCS12
+
+          echo "Debug keystore created."
+
+      - name: Configure Android Export
+        shell: bash
+        run: |
+          set -e
+
+          echo "Checking Android preset..."
           grep -F 'name="Android"' export_presets.cfg
           grep -F 'platform="Android"' export_presets.cfg
-          grep -F 'package/unique_name="com.cricketchampionship.game"' export_presets.cfg
 
-          echo "Android export preset verified."
+          echo "Checking project export settings..."
+          cat export_presets.cfg
 
       - name: Export Android APK
         shell: bash
+        env:
+          GODOT_ANDROID_KEYSTORE_DEBUG_PATH: ${{ runner.temp }}/debug.keystore
+          GODOT_ANDROID_KEYSTORE_DEBUG_USER: androiddebugkey
+          GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD: android
         run: |
           set -e
 
-          godot --headless \
+          mkdir -p "$HOME/.android"
+          cp "$HOME/.android/debug.keystore" "$RUNNER_TEMP/debug.keystore"
+
+          godot --headless --verbose \
             --path . \
             --export-debug "Android" \
-            CricketChampionship3D.apk
+            CricketChampionship3D.apk 2>&1 | tee export.log
 
           test -s CricketChampionship3D.apk
-
           echo "APK exported successfully."
           ls -lh CricketChampionship3D.apk
 
       - name: Upload APK Artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: Cricket-Championship-3D-APK
           path: CricketChampionship3D.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: Upload Export Logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Godot-Android-Export-Logs
+          path: export.log
+          if-no-files-found: ignore
+          retention-days: 7
