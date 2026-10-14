@@ -1,28 +1,47 @@
-name: Build Cricket Championship 3D
+name: Build Cricket Championship 3D Android APK
 
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: ["main"]
 
 jobs:
-  build:
-    name: Validate Godot Project
-    runs-on: ubuntu-latest
+  export-android:
+    runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check Required Files
+      - name: Install Godot 4.3
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.3.0
+          use-dotnet: false
+
+      - name: Import project
+        run: godot --headless --editor --path . --quit
+
+      - name: Validate project files
         run: |
           test -f project.godot
           test -f scenes/Main.tscn
           test -f scripts/main.gd
-          echo "Required project files found."
-
-      - name: Check Project Configuration
-        run: |
           grep -F 'run/main_scene="res://scenes/Main.tscn"' project.godot
-          echo "Project configuration check passed."
+
+      - name: Check Android export preset
+        run: |
+          if [ ! -f export_presets.cfg ]; then
+            echo "::error::Android export preset is missing."
+            exit 1
+          fi
+
+      - name: Export APK
+        run: godot --headless --path . --export-debug "Android" CricketChampionship3D.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CricketChampionship3D-Android-APK
+          path: CricketChampionship3D.apk
+          if-no-files-found: error
