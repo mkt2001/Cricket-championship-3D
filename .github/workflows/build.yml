@@ -39,23 +39,31 @@ jobs:
       - name: Verify Project Files
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
+
+          echo "Checking required project files..."
 
           test -f project.godot
           test -f export_presets.cfg
-          test -f scenes/Main.tscn
-          test -f scripts/main.gd
+          test -f scenes/Main3D.tscn
+          test -f scripts/game_3d.gd
 
-          grep -F 'name="Android"' export_presets.cfg
-          grep -F 'platform="Android"' export_presets.cfg
-          grep -F 'run/main_scene="res://scenes/Main.tscn"' project.godot
+          echo "Checking Android export preset..."
 
-          echo "Project files verified."
+          grep -Fq 'name="Android"' export_presets.cfg
+          grep -Fq 'platform="Android"' export_presets.cfg
+
+          echo "Checking 3D main scene..."
+
+          grep -Fq 'run/main_scene="res://scenes/Main3D.tscn"' project.godot
+          grep -Fq 'res://scripts/game_3d.gd' scenes/Main3D.tscn
+
+          echo "All required project files verified."
 
       - name: Install Godot Android Export Templates
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
           TEMPLATE_DIR="$HOME/.local/share/godot/export_templates/4.3.stable"
 
@@ -84,7 +92,7 @@ jobs:
       - name: Create Android Debug Keystore
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
           keytool -genkeypair \
             -v \
@@ -105,7 +113,7 @@ jobs:
       - name: Configure Godot Android Settings
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
           mkdir -p "$HOME/.config/godot"
 
@@ -125,15 +133,29 @@ jobs:
           test -f "$ANDROID_HOME/build-tools/34.0.0/apksigner"
           test -d "$ANDROID_HOME/ndk/23.2.8568313"
 
-      - name: Import Godot Project
+      - name: Import and Validate Godot Project
         shell: bash
         run: |
-          set -e
+          set -uo pipefail
 
           godot --headless \
             --editor \
             --path . \
-            --quit
+            --quit 2>&1 | tee import.log
+
+          import_status=${PIPESTATUS[0]}
+
+          if [ "$import_status" -ne 0 ]; then
+            echo "ERROR: Godot project import failed."
+            exit "$import_status"
+          fi
+
+          if grep -E 'SCRIPT ERROR: Parse Error|Failed to load script' import.log; then
+            echo "ERROR: A GDScript failed to parse or load."
+            exit 1
+          fi
+
+          echo "Godot import completed without script parse errors."
 
       - name: Export Android APK
         shell: bash
@@ -142,7 +164,7 @@ jobs:
           GODOT_ANDROID_KEYSTORE_DEBUG_USER: androiddebugkey
           GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD: android
         run: |
-          set -o pipefail
+          set -euo pipefail
 
           godot --headless \
             --verbose \
@@ -164,11 +186,13 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Upload Export Logs
+      - name: Upload Failure Logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: Godot-Android-Export-Logs
-          path: export.log
+          name: Godot-Android-Build-Logs
+          path: |
+            import.log
+            export.log
           if-no-files-found: ignore
           retention-days: 7
