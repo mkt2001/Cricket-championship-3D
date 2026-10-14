@@ -1,4 +1,4 @@
-name: Cricket Championship 3D - Android APK
+name: Build Cricket Championship 3D Android APK
 
 on:
   workflow_dispatch:
@@ -25,13 +25,10 @@ jobs:
           java-version: '17'
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK packages
-        run: |
-          sdkmanager "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.1"
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
+          accept-android-sdk-licenses: true
 
       - name: Install Godot 4.3
         uses: chickensoft-games/setup-godot@v2
@@ -39,49 +36,88 @@ jobs:
           version: 4.3.0
           use-dotnet: false
 
-      - name: Check project files
+      - name: Check Project Files
+        shell: bash
         run: |
+          set -e
+
           test -f project.godot
+          test -f export_presets.cfg
           test -f scenes/Main.tscn
           test -f scripts/main.gd
-          test -f export_presets.cfg
 
-      - name: Check Android export preset
-        run: |
-          grep -F 'name="Android"' export_presets.cfg
-          grep -F 'platform="Android"' export_presets.cfg
+          grep -F 'run/main_scene="res://scenes/Main.tscn"' project.godot
 
-      - name: Import Godot project
+          echo "All required project files are present."
+
+      - name: Import Godot Project
+        shell: bash
         run: |
+          set -e
           godot --headless --editor --path . --quit
 
       - name: Install Godot Android Export Templates
+        shell: bash
         run: |
-          mkdir -p "$HOME/.local/share/godot/export_templates/4.3.stable"
-          curl -fL \
-            https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz \
-            -o /tmp/godot-templates.tpz
-          mkdir -p /tmp/godot-templates
-          unzip -q /tmp/godot-templates.tpz -d /tmp/godot-templates
-          find /tmp/godot-templates -type f
-          TEMPLATE_DIR="$(find /tmp/godot-templates -type d -name 'templates' | head -n 1)"
-          test -n "$TEMPLATE_DIR"
-          cp "$TEMPLATE_DIR"/* "$HOME/.local/share/godot/export_templates/4.3.stable/"
+          set -e
+
+          GODOT_VERSION="4.3.stable"
+          TEMPLATE_DIR="$HOME/.local/share/godot/export_templates/$GODOT_VERSION"
+
+          mkdir -p "$TEMPLATE_DIR"
+
+          curl -fL --retry 3 \
+            "https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz" \
+            -o /tmp/godot_templates.tpz
+
+          mkdir -p /tmp/godot_templates
+          unzip -q /tmp/godot_templates.tpz -d /tmp/godot_templates
+
+          TEMPLATE_SOURCE="$(find /tmp/godot_templates -type d -name templates -print -quit)"
+
+          if [ -z "$TEMPLATE_SOURCE" ]; then
+            echo "ERROR: Godot export templates folder was not found."
+            find /tmp/godot_templates -maxdepth 3 -type f
+            exit 1
+          fi
+
+          cp -r "$TEMPLATE_SOURCE"/. "$TEMPLATE_DIR"/
+
+          echo "$GODOT_VERSION" > "$TEMPLATE_DIR/version.txt"
+
+          echo "Installed export templates:"
+          ls -la "$TEMPLATE_DIR"
+
+      - name: Verify Android Export Preset
+        shell: bash
+        run: |
+          set -e
+
+          grep -F 'name="Android"' export_presets.cfg
+          grep -F 'platform="Android"' export_presets.cfg
+          grep -F 'package/unique_name="com.cricketchampionship.game"' export_presets.cfg
+
+          echo "Android export preset verified."
 
       - name: Export Android APK
-        env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
-          ANDROID_SDK_ROOT: ${{ env.ANDROID_HOME }}
-          JAVA_HOME: ${{ env.JAVA_HOME }}
+        shell: bash
         run: |
+          set -e
+
           godot --headless \
             --path . \
             --export-debug "Android" \
             CricketChampionship3D.apk
 
-      - name: Upload APK
+          test -s CricketChampionship3D.apk
+
+          echo "APK exported successfully."
+          ls -lh CricketChampionship3D.apk
+
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Cricket-Championship-3D-APK
           path: CricketChampionship3D.apk
           if-no-files-found: error
+          retention-days: 14
